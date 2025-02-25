@@ -31,7 +31,8 @@ To utilize the SoundControlPlugin, follow these steps:
 
 ## Contribution and Support
 
-We encourage community contributions. For suggestions or to report issues, please submit a pull request or open an issue on the [GitHub repository](https://github.com/hlymcn/SoundControlPlugin). Your input is crucial for the ongoing development of the plugin.
+We encourage community contributions. 
+For suggestions or to report issues, please submit a pull request or open an issue on the [GitHub repository](https://github.com/hlymcn/SoundControlPlugin). Your input is crucial for the ongoing development of the plugin.
 
 ## License
 
