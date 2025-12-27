@@ -5,6 +5,7 @@ using CounterStrikeSharp.API.Modules.UserMessages;
 using CounterStrikeSharp.API.Modules.Utils;
 using Microsoft.Extensions.Localization;
 using CounterStrikeSharp.API;
+using CS2MenuManager.API.Menu;
 
 namespace SoundControlPlugin;
 
@@ -12,11 +13,19 @@ namespace SoundControlPlugin;
 public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
 {
     public override string ModuleName => "SoundControlPlugin";
-    public override string ModuleVersion => "1.0.0";
+    public override string ModuleVersion => "2.0.0";
     public override string ModuleAuthor => "hlymcn";
-    public override string ModuleDescription => "Allows players to control background sound playback with the !dj command.";
+    public override string ModuleDescription => "Allows players to control background sound volume with the !dj command.";
 
-    private Dictionary<ulong, bool> playerSoundBlocked = new Dictionary<ulong, bool>();
+    // 存储玩家音量设置 (0.0 - 1.0)
+    private readonly Dictionary<ulong, float> _playerSoundVolume = new();
+    
+    // 存储玩家待应用的音量设置（下回合生效）
+    private readonly Dictionary<ulong, float> _pendingVolumeChanges = new();
+
+    // 音量选项值
+    private static readonly float[] VolumeValues = [0.0f, 0.1f, 0.2f, 0.3f, 0.5f, 0.7f, 1.0f];
+
     public readonly IStringLocalizer<SoundControlPlugin> _localizer;
     public Config Config { get; set; } = new Config();
 
@@ -27,7 +36,7 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
 
     public override void Load(bool hotReload)
     {
-        AddCommand("dj", "Toggle background sound playback.", OnDjCommand);
+        AddCommand("dj", "Open background sound volume menu.", OnDjCommand);
         HookUserMessage(208, Hook_SosStartSoundEvent);
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
@@ -35,6 +44,7 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
+        ApplyPendingVolumeChanges();
         LoadPlayerSettingsFromDatabase();
         return HookResult.Continue;
     }
@@ -58,49 +68,164 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
 
     private void OnDjCommand(CCSPlayerController? player, CommandInfo info)
     {
-        if (player == null) return;
+        if (player == null || !player.IsValid) return;
+        OpenVolumeMenu(player);
+    }
 
-        ulong playerId = player.SteamID;
-        bool isBlocked = playerSoundBlocked.GetValueOrDefault(playerId, false);
-        playerSoundBlocked[playerId] = !isBlocked;
+    private void OpenVolumeMenu(CCSPlayerController player)
+    {
+        float currentVolume = _playerSoundVolume.GetValueOrDefault(player.SteamID, 1.0f);
+        int currentPercent = (int)(currentVolume * 100);
 
-        if (playerSoundBlocked[playerId])
+        var menu = new WasdMenu(_localizer["Menu.Title"], this);
+
+        foreach (float value in VolumeValues)
         {
-            player.PrintToChat(_localizer["Background.sound.been.blocked"]);
+            int percent = (int)(value * 100);
+            bool isSelected = percent == currentPercent;
+            string displayText = GetVolumeOptionText(percent, isSelected);
+
+            menu.AddItem(displayText, (p, option) =>
+            {
+                SetPlayerVolume(p, value);
+            });
+        }
+
+        menu.Display(player, 60);
+    }
+
+    private string GetVolumeOptionText(int percent, bool isSelected)
+    {
+        string text = percent switch
+        {
+            0 => _localizer["Menu.Option.Muted"],
+            100 => _localizer["Menu.Option.Default"],
+            _ => _localizer["Menu.Option.Percent", percent]
+        };
+
+        return isSelected ? $"{text} ?" : text;
+    }
+
+    public void SetPlayerVolume(CCSPlayerController player, float volume)
+    {
+        if (player == null || !player.IsValid) return;
+
+        volume = Math.Clamp(volume, 0.0f, 1.0f);
+        _pendingVolumeChanges[player.SteamID] = volume;
+        
+        int volumePercent = (int)(volume * 100);
+        
+        if (volume == 0.0f)
+        {
+            player.PrintToChat(_localizer["Chat.Volume.Muted"]);
         }
         else
         {
-            player.PrintToChat(_localizer["Background.sound.been.resumed"]);
+            player.PrintToChat(_localizer["Chat.Volume.Changed", volumePercent]);
         }
+        player.PrintToChat(_localizer["Chat.Volume.NextRound"]);
+    }
+
+    public float GetPlayerVolume(ulong steamId)
+    {
+        return _playerSoundVolume.GetValueOrDefault(steamId, 1.0f);
+    }
+
+    private void ApplyPendingVolumeChanges()
+    {
+        foreach (var entry in _pendingVolumeChanges)
+        {
+            _playerSoundVolume[entry.Key] = entry.Value;
+        }
+        _pendingVolumeChanges.Clear();
     }
 
     private HookResult Hook_SosStartSoundEvent(UserMessage userMessage)
     {
         int sourceEntityIndex = userMessage.ReadInt("source_entity_index");
         var entity = Utilities.GetEntityFromIndex<CBaseEntity>(sourceEntityIndex);
-        if (entity != null && (sourceEntityIndex == 0 || entity.DesignerName == "point_soundevent" || entity.DesignerName == "logic_timer" || entity.DesignerName == "ambient_generic" || entity.DesignerName == "snd_event_point"))
+
+        if (!IsBackgroundSoundEntity(entity, sourceEntityIndex))
         {
-            RecipientFilter filter = new RecipientFilter();
-            foreach (var player in Utilities.GetPlayers())
-            {
-                if (!playerSoundBlocked.ContainsKey(player.SteamID) || !playerSoundBlocked[player.SteamID])
-                {
-                    filter.Add(player);
-                }
-            }
-            userMessage.Recipients = filter;
+            return HookResult.Continue;
         }
+
+        uint soundeventGuid = userMessage.ReadUInt("soundevent_guid");
+
+        foreach (var player in Utilities.GetPlayers())
+        {
+            if (!player.IsValid) continue;
+
+            float volume = _playerSoundVolume.GetValueOrDefault(player.SteamID, 1.0f);
+
+            if (volume < 1.0f)
+            {
+                Server.NextFrame(() =>
+                {
+                    if (player.IsValid)
+                    {
+                        SendVolumeChange(player, soundeventGuid, volume);
+                    }
+                });
+            }
+        }
+
         return HookResult.Continue;
+    }
+
+    private static bool IsBackgroundSoundEntity(CBaseEntity? entity, int sourceEntityIndex)
+    {
+        if (entity == null) return false;
+        if (sourceEntityIndex == 0) return false;
+
+        return entity.DesignerName switch
+        {
+            "point_soundevent" => true,
+            "ambient_generic" => true,
+            "snd_event_point" => true,
+            _ => false
+        };
+    }
+
+    private void SendVolumeChange(CCSPlayerController player, uint soundeventGuid, float volume)
+    {
+        try
+        {
+            var volumeMessage = UserMessage.FromId(210);
+            volumeMessage.SetUInt("soundevent_guid", soundeventGuid);
+            volumeMessage.SetBytes("packed_params", GetSoundVolumeParams(volume));
+
+            RecipientFilter filter = new RecipientFilter();
+            filter.Add(player);
+            volumeMessage.Recipients = filter;
+            volumeMessage.Send();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SoundControlPlugin] Error sending volume change: {ex.Message}");
+        }
+    }
+
+    private static byte[] GetSoundVolumeParams(float volume)
+    {
+        byte[] header = [0xE9, 0x54, 0x60, 0xBD, 0x08, 0x04, 0x00];
+        byte[] volumeBytes = BitConverter.GetBytes(volume);
+        
+        byte[] result = new byte[header.Length + volumeBytes.Length];
+        header.CopyTo(result, 0);
+        volumeBytes.CopyTo(result, header.Length);
+        
+        return result;
     }
 
     private void LoadPlayerSettingsFromDatabase()
     {
-        Database.LoadPlayerSettingsFromDatabaseAsync(playerSoundBlocked).GetAwaiter().GetResult();
+        Database.LoadPlayerSettingsFromDatabaseAsync(_playerSoundVolume).GetAwaiter().GetResult();
     }
 
     private void SavePlayerSettingsToDatabase()
     {
-        foreach (var entry in playerSoundBlocked)
+        foreach (var entry in _playerSoundVolume)
         {
             Task.Run(() => Database.SavePlayerSettingsToDatabaseAsync(entry.Key, entry.Value));
         }

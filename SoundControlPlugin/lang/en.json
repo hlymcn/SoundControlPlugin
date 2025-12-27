@@ -1,0 +1,9 @@
+{
+  "Menu.Title": "BGM Volume Menu",
+  "Menu.Option.Muted": "Muted (0%)",
+  "Menu.Option.Default": "Default (100%)",
+  "Menu.Option.Percent": "{0}%",
+  "Chat.Volume.Muted": "{green}[SoundControl]{default} Background music has been {lightblue}muted{default}.",
+  "Chat.Volume.Changed": "{green}[SoundControl]{default} Volume has been set to {lightblue}{0}%{default}.",
+  "Chat.Volume.NextRound": "{green}[SoundControl]{default} Changes will take effect {yellow}next round{default}."
+}

@@ -1,0 +1,9 @@
+{
+  "Menu.Title": "BGM音量菜单",
+  "Menu.Option.Muted": "静音 (0%)",
+  "Menu.Option.Default": "默认 (100%)",
+  "Menu.Option.Percent": "{0}%",
+  "Chat.Volume.Muted": "{green}[声音控制]{default} 背景音乐已{lightblue}静音{default}。",
+  "Chat.Volume.Changed": "{green}[声音控制]{default} 音量已设置为 {lightblue}{0}%{default}。",
+  "Chat.Volume.NextRound": "{green}[声音控制]{default} 设置将在{yellow}下回合{default}生效。"
+}
