@@ -2,21 +2,22 @@
 
 ## Overview
 
-**SoundControlPlugin** is an innovative plugin for Counter-Strike 2 servers, offering players the ability to control background sound playback with the `!dj` command. This plugin enriches the gaming experience by allowing players to customize their audio environment, leading to a more personalized and enjoyable gameplay.
+**SoundControlPlugin** is an innovative CounterStrikeSharp plugin for Counter-Strike 2 servers. Version 2.0 introduces a full background-sound *volume* controller that players can access with the `!dj` command. Instead of simply blocking sounds, each player can now pick a preferred volume level (0%–100%), stored per SteamID in MySQL and enforced in real time through `SosSetSoundEventParams` messages.
 
 ## Key Features
 
-- **Dynamic Sound Control:** Players can activate or deactivate background sounds, providing an adaptable audio experience.
-- **Individual Preferences:** Each player's sound settings are stored independently, ensuring a tailored experience without affecting others.
-- **Event-Driven Filtering:** The plugin identifies specific sound events and applies player preferences to decide which sounds are broadcasted.
+- **Interactive Volume Menu:** Built with CS2MenuManager, the `!dj` menu lists predefined volume presets and highlights the current selection with localized text.
+- **Per-Player Persistence:** Selected levels are saved immediately to MySQL, refreshed on reconnect, on round transitions, and when players disconnect.
+- **Live Sound Param Control:** The plugin hooks `SosStartSoundEvent` (um 208) and pushes custom `SosSetSoundEventParams` (um 210) so every player hears background audio at their chosen volume.
+- **Graceful Fallback:** If a map replays its background track next round, the stored volume automatically re-applies, guaranteeing consistent behavior.
 
 ## Usage
 
 To utilize the SoundControlPlugin, follow these steps:
 
 1. **Installation:** Acquire the plugin from the [GitHub repository](https://github.com/hlymcn/SoundControlPlugin) and place it in your server's plugin directory.
-2. **Configuration:** Customize the plugin by setting up the command and user message hooks as detailed in the plugin's documentation.
-3. **Activation:** Upon activation, the plugin will enable players to use the `!dj` command to manage their sound settings.
+2. **Configuration:** Edit `.../configs/plugins/SoundControlPlugin/SoundControlPlugin.json` with your MySQL credentials; the plugin will migrate any legacy `IsSoundBlocked` tables to the new `SoundVolume` schema automatically.
+3. **Activation:** Reload CounterStrikeSharp. Players can now open the volume menu via `!dj`, pick a preset, and hear the change immediately (or next round at worst).
 
 ## Requirements
 
