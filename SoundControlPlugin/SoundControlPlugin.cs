@@ -13,19 +13,11 @@ namespace SoundControlPlugin;
 public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
 {
     public override string ModuleName => "SoundControlPlugin";
-    public override string ModuleVersion => "2.0.0";
+    public override string ModuleVersion => "2.0.5";
     public override string ModuleAuthor => "hlymcn";
     public override string ModuleDescription => "Allows players to control background sound volume with the !dj command.";
-
-    // 存储玩家音量设置 (0.0 - 1.0)
     private readonly Dictionary<ulong, float> _playerSoundVolume = new();
-    
-    // 存储玩家待应用的音量设置（下回合生效）
-    private readonly Dictionary<ulong, float> _pendingVolumeChanges = new();
-
-    // 音量选项值
     private static readonly float[] VolumeValues = [0.0f, 0.1f, 0.2f, 0.3f, 0.5f, 0.7f, 1.0f];
-
     public readonly IStringLocalizer<SoundControlPlugin> _localizer;
     public Config Config { get; set; } = new Config();
 
@@ -40,11 +32,11 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
         HookUserMessage(208, Hook_SosStartSoundEvent);
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventRoundEnd>(OnRoundEnd);
+        RegisterEventHandler<EventPlayerDisconnect>(OnPlayerDisconnect);
     }
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
     {
-        ApplyPendingVolumeChanges();
         LoadPlayerSettingsFromDatabase();
         return HookResult.Continue;
     }
@@ -103,7 +95,8 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
             _ => _localizer["Menu.Option.Percent", percent]
         };
 
-        return isSelected ? $"{text} ?" : text;
+        string selectedSuffix = _localizer["Menu.Option.Selected"];
+        return isSelected ? $"{text} {selectedSuffix}" : text;
     }
 
     public void SetPlayerVolume(CCSPlayerController player, float volume)
@@ -111,7 +104,8 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
         if (player == null || !player.IsValid) return;
 
         volume = Math.Clamp(volume, 0.0f, 1.0f);
-        _pendingVolumeChanges[player.SteamID] = volume;
+        _playerSoundVolume[player.SteamID] = volume;
+        SavePlayerVolumeToDatabase(player.SteamID, volume);
         
         int volumePercent = (int)(volume * 100);
         
@@ -131,15 +125,6 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
         return _playerSoundVolume.GetValueOrDefault(steamId, 1.0f);
     }
 
-    private void ApplyPendingVolumeChanges()
-    {
-        foreach (var entry in _pendingVolumeChanges)
-        {
-            _playerSoundVolume[entry.Key] = entry.Value;
-        }
-        _pendingVolumeChanges.Clear();
-    }
-
     private HookResult Hook_SosStartSoundEvent(UserMessage userMessage)
     {
         int sourceEntityIndex = userMessage.ReadInt("source_entity_index");
@@ -157,17 +142,7 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
             if (!player.IsValid) continue;
 
             float volume = _playerSoundVolume.GetValueOrDefault(player.SteamID, 1.0f);
-
-            if (volume < 1.0f)
-            {
-                Server.NextFrame(() =>
-                {
-                    if (player.IsValid)
-                    {
-                        SendVolumeChange(player, soundeventGuid, volume);
-                    }
-                });
-            }
+            SendVolumeChange(player, soundeventGuid, volume);
         }
 
         return HookResult.Continue;
@@ -176,7 +151,7 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
     private static bool IsBackgroundSoundEntity(CBaseEntity? entity, int sourceEntityIndex)
     {
         if (entity == null) return false;
-        if (sourceEntityIndex == 0) return false;
+        if (sourceEntityIndex == 0) return true;
 
         return entity.DesignerName switch
         {
@@ -229,5 +204,24 @@ public class SoundControlPlugin : BasePlugin, IPluginConfig<Config>
         {
             Task.Run(() => Database.SavePlayerSettingsToDatabaseAsync(entry.Key, entry.Value));
         }
+    }
+
+    private void SavePlayerVolumeToDatabase(ulong steamId, float volume)
+    {
+        Task.Run(() => Database.SavePlayerSettingsToDatabaseAsync(steamId, volume));
+    }
+
+    private HookResult OnPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo info)
+    {
+        var player = @event.Userid;
+        if (player == null) return HookResult.Continue;
+
+        ulong steamId = player.SteamID;
+        if (_playerSoundVolume.TryGetValue(steamId, out var volume))
+        {
+            SavePlayerVolumeToDatabase(steamId, volume);
+        }
+
+        return HookResult.Continue;
     }
 }
