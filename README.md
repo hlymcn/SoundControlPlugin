@@ -71,6 +71,33 @@ Restart the server after editing the file so CounterStrikeSharp reloads the conf
 - Migrations: if an old `IsSoundBlocked` column is detected, the table is dropped and recreated with the new structure.
 - Saves occur asynchronously on player updates, disconnects, and round transitions to avoid blocking gameplay threads.
 
+## Inspiration & Sample
+
+This plugin's approach to adjusting ambient audio draws inspiration from a community prototype shared in the CounterStrikeSharp Discord:
+
+[![Discord Inspiration](https://img.shields.io/badge/Discord-Inspiration-5865F2?logo=discord&logoColor=white)](https://discord.com/channels/1160907911501991946/1453862674403164211)
+
+The snippet below illustrates how `SosStartSoundEvent` (208) can be paired with `SosSetSoundEventParams` (210) to scale sound volume:
+
+```csharp
+public HookResult HookUserMessage208(UserMessage um)
+{
+  var soundevent = um.ReadUInt("soundevent_hash");
+  var soundevent_guid = um.ReadUInt("soundevent_guid");
+  var extend = UserMessage.FromId(210);
+  extend.SetUInt("soundevent_guid", soundevent_guid);
+  var volumeBytes = GetSoundVolumeParams(3f);
+  var packedParams = new byte[] { 0xE9, 0x54, 0x60, 0xBD, 0x08, 0x04, 0x00 }.
+    Concat(volumeBytes).ToArray();
+  extend.SetBytes("packed_params", packedParams);
+  extend.Recipients = um.Recipients;
+  extend.Send();
+  return HookResult.Continue;
+}
+
+private byte[] GetSoundVolumeParams(float volume) => BitConverter.GetBytes(volume);
+```
+
 ## Commands
 
 - `!dj` — Opens the menu (aliases `dj` or `/dj` depending on your chat trigger configuration).
@@ -157,6 +184,33 @@ Issues, feature requests, and pull requests are welcome! Please discuss substant
 - 字段：`steamid64 BIGINT UNIQUE`、`SoundVolume FLOAT DEFAULT 1.0`
 - 迁移逻辑：检测到旧的 `IsSoundBlocked` 列会自动丢弃旧表并创建新结构。
 - 保存策略：在玩家调节、断线和回合切换时异步写入，避免阻塞游戏线程。
+
+## 灵感来源与示例
+
+插件的实现思路来自 CounterStrikeSharp Discord 中的原型分享：
+
+[![Discord 灵感](https://img.shields.io/badge/Discord-%E7%81%B5%E6%84%9F-5865F2?logo=discord&logoColor=white)](https://discord.com/channels/1160907911501991946/1453862674403164211)
+
+下方代码演示了如何在 `SosStartSoundEvent` (208) 中读取事件，再通过 `SosSetSoundEventParams` (210) 设置音量：
+
+```csharp
+public HookResult HookUserMessage208(UserMessage um)
+{
+  var soundevent = um.ReadUInt("soundevent_hash");
+  var soundevent_guid = um.ReadUInt("soundevent_guid");
+  var extend = UserMessage.FromId(210);
+  extend.SetUInt("soundevent_guid", soundevent_guid);
+  var volumeBytes = GetSoundVolumeParams(3f);
+  var packedParams = new byte[] { 0xE9, 0x54, 0x60, 0xBD, 0x08, 0x04, 0x00 }.
+    Concat(volumeBytes).ToArray();
+  extend.SetBytes("packed_params", packedParams);
+  extend.Recipients = um.Recipients;
+  extend.Send();
+  return HookResult.Continue;
+}
+
+private byte[] GetSoundVolumeParams(float volume) => BitConverter.GetBytes(volume);
+```
 
 ## 命令
 
