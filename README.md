@@ -1,3 +1,17 @@
+﻿<p align="center">
+  <a href="https://github.com/roflmuffin/CounterStrikeSharp">
+    <img src="https://docs.cssharp.dev/images/cssharp.svg" width="60" height="60" style="vertical-align: middle; margin-right: 10px;" />
+  </a>
+</p>
+
+<h3 align="center">
+  <span style="vertical-align: middle; font-weight: 600;">
+    <code style="vertical-align: middle;">CounterStrikeSharp</code>
+  </span>
+</h3>
+
+---
+
 # SoundControlPlugin
 
 [![跳转至中文介绍](https://img.shields.io/badge/%E8%B7%B3%E8%BD%AC%E5%88%B0%E4%B8%AD%E6%96%87%E7%89%88-%E4%B8%AD%E6%96%87-red)](#中文版介绍)
